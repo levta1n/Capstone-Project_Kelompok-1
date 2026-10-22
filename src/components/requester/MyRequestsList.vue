@@ -1,6 +1,7 @@
 <script>
 import { defineComponent } from 'vue'
-import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Eye } from '@lucide/vue'
+import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Eye, X } from '@lucide/vue'
+import { APPLICATION_TIME_ZONE } from '../../utils/dateTime'
 
 export default defineComponent({
   name: 'MyRequestsList',
@@ -10,6 +11,7 @@ export default defineComponent({
     ChevronRight,
     ClipboardList,
     Eye,
+    X,
   },
   props: {
     requests: {
@@ -17,7 +19,7 @@ export default defineComponent({
       required: true,
     },
   },
-  emits: ['create', 'show-request', 'see-all'],
+  emits: ['create', 'show-request', 'see-all', 'cancel-request'],
   data() {
     return {
       currentPage: 1,
@@ -50,18 +52,22 @@ export default defineComponent({
     },
     statusClass(status) {
       return {
-        Diterima: 'bg-success-subtle text-success',
         Menunggu: 'bg-warning-subtle text-warning',
-        Proses: 'bg-primary-subtle text-primary',
+        Diterima: 'bg-success-subtle text-success',
         Ditolak: 'bg-danger-subtle text-danger',
-        Dibatalkan: 'bg-secondary-subtle text-secondary',
+        Dibatalkan: 'bg-danger-subtle text-danger',
       }[status] || 'bg-secondary-subtle text-secondary'
     },
     formatSchedule(value) {
       return new Intl.DateTimeFormat('id-ID', {
         dateStyle: 'medium',
         timeStyle: 'short',
+        timeZone: APPLICATION_TIME_ZONE,
       }).format(new Date(value))
+    },
+    canCancel(request) {
+      return ['Menunggu', 'Diterima'].includes(request.status)
+        && new Date(request.startsAt).getTime() > Date.now()
     },
   },
 })
@@ -83,9 +89,11 @@ export default defineComponent({
         <div class="request-main">
           <strong class="d-block text-dark">{{ request.room }}</strong>
           <small class="text-muted">{{ request.id }} · {{ request.type }} · {{ request.participantCount }} peserta</small>
+          <small v-if="request.rejectionReason" class="d-block text-danger mt-1">{{ request.rejectionReason }}</small>
         </div>
-        <div class="request-time d-flex align-items-center gap-1 text-muted small"><CalendarDays :size="15" aria-hidden="true" />{{ formatSchedule(request.startsAt) }}</div>
+        <div class="request-time d-flex align-items-center gap-1 text-muted small"><CalendarDays :size="15" aria-hidden="true" /><span>{{ formatSchedule(request.startsAt) }}–{{ formatSchedule(request.endsAt) }}</span></div>
         <span :class="`badge rounded-pill ${statusClass(request.status)}`">{{ request.status }}</span>
+        <button v-if="canCancel(request)" class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1" type="button" :aria-label="`Batalkan ${request.id}`" @click="$emit('cancel-request', request)"><X :size="15" aria-hidden="true" />Batalkan</button>
         <button class="btn btn-light border rounded-2" type="button" :aria-label="`Detail ${request.id}`" @click="$emit('show-request', request)"><Eye :size="17" aria-hidden="true" /></button>
       </article>
     </div>

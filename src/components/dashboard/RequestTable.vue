@@ -6,10 +6,10 @@ export default defineComponent({
   name: 'RequestTable',
   components: {
     ArrowRight,
-    Check,
     ChevronLeft,
     ChevronRight,
     MoreHorizontal,
+    Check,
     X,
   },
   props: {
@@ -61,15 +61,15 @@ export default defineComponent({
     },
     statusClass(status) {
       const classes = {
-        Diterima: 'bg-success-subtle text-success',
         Menunggu: 'bg-warning-subtle text-warning',
-        Proses: 'bg-primary-subtle text-primary',
+        Diterima: 'bg-success-subtle text-success',
         Ditolak: 'bg-danger-subtle text-danger',
+        Dibatalkan: 'bg-danger-subtle text-danger',
       }
       return classes[status] || 'bg-secondary-subtle text-secondary'
     },
-    canDecide(request) {
-      return this.canReview && ['Menunggu', 'Proses'].includes(request.status)
+    canApprove(request) {
+      return this.canReview && request.status === 'Menunggu'
     },
   },
 })
@@ -78,7 +78,7 @@ export default defineComponent({
 <template>
   <section class="card shadow-sm border-0 rounded-3" id="permintaan">
     <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center pt-4">
-      <div><h2 class="h5 fw-bold mb-1">Permintaan terbaru</h2><p class="text-muted small mb-0">Daftar permintaan yang sedang diproses</p></div>
+      <div><h2 class="h5 fw-bold mb-1">Permintaan peminjaman</h2><p class="text-muted small mb-0">Tinjau permintaan yang menunggu persetujuan</p></div>
       <button class="btn btn-link text-primary p-0 d-inline-flex align-items-center gap-1">Lihat semua <ArrowRight :size="16" aria-hidden="true" /></button>
     </div>
     <div class="table-responsive">
@@ -95,16 +95,16 @@ export default defineComponent({
             <td>
               <div class="d-flex align-items-center gap-1">
                 <button
-                  v-if="canDecide(request)"
+                  v-if="canApprove(request)"
                   class="btn btn-sm btn-outline-success p-1"
                   type="button"
-                  :aria-label="`Setujui ${request.id}`"
-                  title="Setujui"
+                  :aria-label="`Terima ${request.id}`"
+                  title="Terima permintaan"
                   :disabled="reviewingRequestId === request.databaseId"
                   @click="$emit('approveRequest', request)"
                 ><Check :size="16" aria-hidden="true" /></button>
                 <button
-                  v-if="canDecide(request)"
+                  v-if="canApprove(request)"
                   class="btn btn-sm btn-outline-danger p-1"
                   type="button"
                   :aria-label="`Tolak ${request.id}`"

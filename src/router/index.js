@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import LandingPage from '../views/LandingPage.vue'
 import DashboardPage from '../views/DashboardPage.vue'
 import RequesterDashboardPage from '../views/RequesterDashboardPage.vue'
+import PasswordUpdatePage from '../views/PasswordUpdatePage.vue'
 import { supabase } from '../utils/supabase'
 import { getProfile } from '../services/profileService'
 
@@ -23,6 +24,17 @@ export const routes = [
     component: RequesterDashboardPage,
     meta: { requiresAuth: true },
   },
+  {
+    path: '/change-password',
+    name: 'change-password',
+    component: PasswordUpdatePage,
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/reset-password',
+    name: 'reset-password',
+    component: PasswordUpdatePage,
+  },
 ]
 
 const router = createRouter({
@@ -42,9 +54,17 @@ router.beforeEach(async (to) => {
     return { name: 'landing' }
   }
 
-  if (session && ['landing', 'dashboard', 'requester-dashboard'].includes(to.name)) {
+  if (session && to.name === 'reset-password') return true
+
+  if (session && ['landing', 'dashboard', 'requester-dashboard', 'change-password'].includes(to.name)) {
     const profile = await getProfile(session.user.id).catch(() => null)
     if (!profile) return to.name === 'landing' ? true : { name: 'landing' }
+
+    if (to.name === 'change-password') {
+      return profile.must_change_password
+        ? true
+        : { name: profile.role === 'requester' ? 'requester-dashboard' : 'dashboard' }
+    }
 
     const destination = profile.role === 'requester' ? 'requester-dashboard' : 'dashboard'
     if (to.name !== destination) return { name: destination }

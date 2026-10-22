@@ -1,11 +1,10 @@
 <script>
 import { defineComponent } from 'vue'
-import { Bell, LogOut, Menu, Search } from '@lucide/vue'
+import { LogOut, Menu, Search } from '@lucide/vue'
 
 export default defineComponent({
   name: 'DashboardHeader',
   components: {
-    Bell,
     LogOut,
     Menu,
     Search,
@@ -47,7 +46,6 @@ export default defineComponent({
         />
       </label>
       <div class="dashboard-header-actions d-flex align-items-center gap-2 gap-md-3">
-        <button class="btn btn-light border rounded-2 position-relative d-none d-md-inline-flex" aria-label="Notifikasi"><Bell :size="18" aria-hidden="true" /><span class="badge bg-danger rounded-circle position-absolute top-0 end-0" aria-hidden="true"></span></button>
         <div class="dashboard-user-profile d-flex align-items-center gap-2"><span class="dashboard-user-avatar badge bg-primary rounded-circle fs-6 d-inline-grid justify-content-center align-items-center">{{ userInitials }}</span><div class="dashboard-user-info d-none d-lg-flex flex-column"><strong class="fs-6">{{ userName }}</strong><small class="text-muted">{{ userRole }}</small></div></div>
         <button class="dashboard-logout btn btn-light border rounded-2" aria-label="Keluar" title="Keluar" @click="$emit('logout')"><LogOut :size="18" aria-hidden="true" /></button>
       </div>

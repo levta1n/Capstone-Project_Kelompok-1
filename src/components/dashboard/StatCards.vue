@@ -5,7 +5,7 @@ import { Building2, CircleCheck, Clock3 } from '@lucide/vue'
 const statIcons = {
   rooms: Building2,
   accepted: CircleCheck,
-  pending: Clock3,
+  active: Clock3,
 }
 
 export default defineComponent({

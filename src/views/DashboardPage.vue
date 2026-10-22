@@ -1,10 +1,13 @@
 <script>
 import { defineComponent } from 'vue'
-import { Download, Plus } from '@lucide/vue'
+import { Download } from '@lucide/vue'
 import { supabase } from '../utils/supabase'
-import { createReservation, listReservations, reviewReservation, subscribeToReservations } from '../services/reservationService'
+import { listReservations, reviewReservation, subscribeToReservations } from '../services/reservationService'
 import { getRoomAvailabilityFor, listAvailableRooms, listManagedRooms, saveRoom, setRoomActive, subscribeToRoomChanges } from '../services/roomService'
-import { getProfile, signOut } from '../services/profileService'
+import { getProfile, shouldPromptPasswordChange, signOut } from '../services/profileService'
+import { createManagedUser, listProfiles, manageUser } from '../services/userService'
+import { exportReservationReport } from '../services/reportService'
+import { formatAppDateTime, parseAppDateTime } from '../utils/dateTime'
 import DashboardHeader from '../components/dashboard/DashboardHeader.vue'
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue'
 import RequestModal from '../components/dashboard/RequestModal.vue'
@@ -12,20 +15,34 @@ import RequestTable from '../components/dashboard/RequestTable.vue'
 import RoomManagerModal from '../components/dashboard/RoomManagerModal.vue'
 import RoomScheduleAvailability from '../components/requester/RoomScheduleAvailability.vue'
 import StatCards from '../components/dashboard/StatCards.vue'
+import UserManagementPanel from '../components/dashboard/UserManagementPanel.vue'
+import PasswordChangePrompt from '../components/dashboard/PasswordChangePrompt.vue'
+import ReportExportModal from '../components/dashboard/ReportExportModal.vue'
 
 function getDefaultScheduleRange() {
-  const startsAt = new Date()
-  startsAt.setHours(startsAt.getHours() + 1, 0, 0, 0)
+  const startsAt = parseAppDateTime(formatAppDateTime(new Date(Date.now() + 60 * 60 * 1000)))
+  startsAt.setUTCMinutes(0, 0, 0)
   const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000)
-  const toLocalInput = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
-  return { startsAt: toLocalInput(startsAt), endsAt: toLocalInput(endsAt) }
+  return { startsAt: formatAppDateTime(startsAt), endsAt: formatAppDateTime(endsAt) }
+}
+
+function formatDateInput(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function getDefaultReportRange() {
+  const today = new Date()
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+  return { from: formatDateInput(firstDay), to: formatDateInput(today) }
 }
 
 export default defineComponent({
   name: 'DashboardPage',
   components: {
     Download,
-    Plus,
     DashboardHeader,
     DashboardSidebar,
     RequestModal,
@@ -33,14 +50,25 @@ export default defineComponent({
     RoomManagerModal,
     RoomScheduleAvailability,
     StatCards,
+    UserManagementPanel,
+    PasswordChangePrompt,
+    ReportExportModal,
   },
   data() {
     const schedule = getDefaultScheduleRange()
+    const reportRange = getDefaultReportRange()
     return {
       activeNav: 'beranda',
       mobileSidebarOpen: false,
       searchTerm: '',
+      isReportExportOpen: false,
+      isExportingReport: false,
+      reportExportError: '',
+      reportFrom: reportRange.from,
+      reportTo: reportRange.to,
       profile: null,
+      showPasswordChangePrompt: false,
+      hasCheckedPasswordPrompt: false,
       requests: [],
       rooms: [],
       scheduleRooms: [],
@@ -52,14 +80,18 @@ export default defineComponent({
       selectedRequest: null,
       reviewingRequestId: '',
       reviewError: '',
-      isCreateRequestOpen: false,
-      isSubmittingRequest: false,
-      requestError: '',
+      reviewErrorTimeout: null,
       loadError: '',
       isLoading: true,
       isRoomManagerOpen: false,
       isSavingRoom: false,
       roomManagerError: '',
+      users: [],
+      isLoadingUsers: false,
+      isCreatingUser: false,
+      updatingUserId: '',
+      userManagementError: '',
+      userManagementSuccess: '',
       stopRequestSubscription: null,
       stopRoomSubscription: null,
     }
@@ -77,12 +109,19 @@ export default defineComponent({
     },
     stats() {
       const accepted = this.requests.filter((request) => request.status === 'Diterima').length
-      const pending = this.requests.filter((request) => ['Menunggu', 'Proses'].includes(request.status)).length
       return [
         { icon: 'rooms', type: 'bg-primary-subtle text-primary', label: 'Total ruangan', value: this.rooms.length, description: 'Ruangan aktif' },
         { icon: 'accepted', type: 'bg-success-subtle text-success', label: 'Permintaan diterima', value: accepted, description: 'Sesuai data akun' },
-        { icon: 'pending', type: 'bg-warning-subtle text-warning', label: 'Menunggu persetujuan', value: pending, description: 'Perlu ditindaklanjuti' },
+        { icon: 'active', type: 'bg-warning-subtle text-warning', label: 'Peminjaman aktif', value: this.activeReservationCount, description: 'Belum selesai / dibatalkan' },
       ]
+    },
+    activeReservationCount() {
+      return this.requests.filter((request) =>
+        request.status === 'Diterima' && new Date(request.endsAt).getTime() > Date.now(),
+      ).length
+    },
+    pendingApprovalCount() {
+      return this.requests.filter((request) => request.status === 'Menunggu').length
     },
     userName() {
       return this.profile?.full_name || 'Pengguna'
@@ -91,10 +130,13 @@ export default defineComponent({
       return this.userName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()
     },
     userRole() {
-      return { admin: 'Administrator', manager: 'Manajer Operasi', requester: 'Pemohon' }[this.profile?.role] || 'Pengguna'
+      return { admin: 'Administrator', requester: 'Pemohon' }[this.profile?.role] || 'Pengguna'
     },
     canManage() {
-      return ['admin', 'manager'].includes(this.profile?.role)
+      return this.profile?.role === 'admin'
+    },
+    isAdmin() {
+      return this.profile?.role === 'admin'
     },
   },
   mounted() {
@@ -103,6 +145,7 @@ export default defineComponent({
   },
   beforeUnmount() {
     window.removeEventListener('scroll', this.handlePageScroll)
+    this.clearReviewErrorTimeout()
     this.stopRequestSubscription?.()
     this.stopRoomSubscription?.()
   },
@@ -130,6 +173,12 @@ export default defineComponent({
 
         if (!profile) throw new Error('Profil pengguna belum dibuat di Supabase.')
         this.profile = profile
+        if (!this.hasCheckedPasswordPrompt) {
+          this.showPasswordChangePrompt = Boolean(
+            profile.must_change_password && shouldPromptPasswordChange(user.id),
+          )
+          this.hasCheckedPasswordPrompt = true
+        }
         this.rooms = rooms
         this.managedRooms = managedRooms
         this.requests = requests
@@ -166,25 +215,68 @@ export default defineComponent({
     },
     showRequest(request) {
       this.selectedRequest = request
+      this.clearReviewErrorTimeout()
+      this.reviewError = ''
     },
-    openCreateRequest() {
-      this.requestError = ''
-      this.isCreateRequestOpen = true
+    openReportExport() {
+      if (!this.isAdmin) return
+      this.reportExportError = ''
+      this.isReportExportOpen = true
+    },
+    async exportReport() {
+      if (!this.isAdmin) return
+      this.isExportingReport = true
+      this.reportExportError = ''
+      try {
+        await exportReservationReport({ from: this.reportFrom, to: this.reportTo })
+        this.isReportExportOpen = false
+      } catch (error) {
+        this.reportExportError = `Laporan gagal dibuat: ${error.message}`
+      } finally {
+        this.isExportingReport = false
+      }
     },
     async decideRequest(request, status, reason = null) {
-      if (!supabase || !this.canManage) return
+      if (!this.isAdmin || !request) return
       this.reviewingRequestId = request.databaseId
+      this.clearReviewErrorTimeout()
       this.reviewError = ''
       try {
-        const { data: { user }, error } = await supabase.auth.getUser()
-        if (error || !user) throw error || new Error('Sesi admin tidak ditemukan.')
-        await reviewReservation(request.databaseId, user.id, status, reason)
+        await reviewReservation(request.databaseId, status, reason)
         this.selectedRequest = null
         await this.loadDashboard()
       } catch (error) {
-        this.reviewError = `Keputusan gagal disimpan: ${error.message}`
+        const earlierRequest = status === 'accepted'
+          && /lebih awal|bentrok|overlap/i.test(error.message)
+          ? this.getEarlierConflictingRequest(request)
+          : null
+        this.reviewError = earlierRequest
+          ? `Permintaan ${request.id} belum dapat disetujui: ${earlierRequest.id} lebih dahulu mengantre dan jadwalnya bentrok.`
+          : `Keputusan permintaan ${request.id} gagal disimpan: ${error.message}`
+        this.reviewErrorTimeout = window.setTimeout(() => {
+          this.reviewError = ''
+          this.reviewErrorTimeout = null
+        }, 5000)
       } finally {
         this.reviewingRequestId = ''
+      }
+    },
+    getEarlierConflictingRequest(request) {
+      return this.requests
+        .filter((candidate) =>
+          candidate.status === 'Menunggu'
+          && candidate.databaseId !== request.databaseId
+          && candidate.roomId === request.roomId
+          && new Date(candidate.createdAt).getTime() < new Date(request.createdAt).getTime()
+          && new Date(candidate.startsAt).getTime() < new Date(request.endsAt).getTime()
+          && new Date(candidate.endsAt).getTime() > new Date(request.startsAt).getTime(),
+        )
+        .sort((left, right) => new Date(left.createdAt) - new Date(right.createdAt))[0] || null
+    },
+    clearReviewErrorTimeout() {
+      if (this.reviewErrorTimeout !== null) {
+        window.clearTimeout(this.reviewErrorTimeout)
+        this.reviewErrorTimeout = null
       }
     },
     approveRequest(request) {
@@ -192,6 +284,10 @@ export default defineComponent({
     },
     rejectRequest({ request, reason }) {
       return this.decideRequest(request, 'rejected', reason)
+    },
+    changePasswordNow() {
+      this.showPasswordChangePrompt = false
+      this.$router.push({ name: 'change-password' })
     },
     async saveManagedRoom(room) {
       this.isSavingRoom = true
@@ -217,10 +313,55 @@ export default defineComponent({
         this.isSavingRoom = false
       }
     },
+    async loadUsers() {
+      if (!this.isAdmin) return
+      this.isLoadingUsers = true
+      this.userManagementError = ''
+      try {
+        this.users = await listProfiles()
+      } catch (error) {
+        this.userManagementError = `Gagal memuat pengguna: ${error.message}`
+      } finally {
+        this.isLoadingUsers = false
+      }
+    },
+    async createUser(form) {
+      if (!this.isAdmin) return
+      this.isCreatingUser = true
+      this.userManagementError = ''
+      this.userManagementSuccess = ''
+      try {
+        const user = await createManagedUser(form)
+        this.userManagementSuccess = `Akun ${user.email} berhasil dibuat. Password awal: ${user.initialPassword}. Sampaikan secara pribadi dan minta pengguna segera menggantinya.`
+        await this.loadUsers()
+      } catch (error) {
+        this.userManagementError = `Gagal membuat akun: ${error.message}`
+      } finally {
+        this.isCreatingUser = false
+      }
+    },
+    async handleUserAction({ userId, action }) {
+      if (!this.isAdmin) return
+      this.updatingUserId = userId
+      this.userManagementError = ''
+      this.userManagementSuccess = ''
+      try {
+        await manageUser(userId, action)
+        const messages = {
+          suspend: 'Akun berhasil di-suspend. Pengguna tidak dapat login.',
+          reactivate: 'Akun berhasil diaktifkan kembali.',
+          delete: 'Akun diarsipkan. Profil dan riwayat peminjaman tetap disimpan.',
+        }
+        this.userManagementSuccess = messages[action] || 'Aksi pengguna berhasil.'
+        await this.loadUsers()
+      } catch (error) {
+        this.userManagementError = `Aksi pengguna gagal: ${error.message}`
+      } finally {
+        this.updatingUserId = ''
+      }
+    },
     closeRequest() {
       this.selectedRequest = null
-      this.isCreateRequestOpen = false
-      this.requestError = ''
     },
     async handleLogout() {
       try {
@@ -230,26 +371,13 @@ export default defineComponent({
         this.loadError = `Gagal keluar: ${error.message}`
       }
     },
-    async createRequest(form) {
-      if (!supabase) return
-      this.isSubmittingRequest = true
-      this.requestError = ''
-
-      try {
-        const { data: { user }, error: authError } = await supabase.auth.getUser()
-        if (authError || !user) throw authError || new Error('Sesi login berakhir. Silakan masuk kembali.')
-
-        await createReservation(form, user.id)
-        this.isCreateRequestOpen = false
-        await this.loadDashboard()
-      } catch (error) {
-        this.requestError = `Permintaan gagal disimpan: ${error.message}`
-      } finally {
-        this.isSubmittingRequest = false
-      }
-    },
     navigate(section) {
       this.activeNav = section
+      if (section === 'pengguna' && this.isAdmin) {
+        this.loadUsers()
+        this.$nextTick(() => document.getElementById('pengguna')?.scrollIntoView({ behavior: 'smooth' }))
+        return
+      }
       document.getElementById(section)?.scrollIntoView({ behavior: 'smooth' })
     },
     toggleMobileSidebar() {
@@ -276,6 +404,9 @@ export default defineComponent({
         :user-name="userName"
         :user-initials="userInitials"
         :user-role="userRole"
+        :pending-approval-count="pendingApprovalCount"
+        :is-admin="isAdmin"
+        :can-manage="canManage"
         @navigate="navigate"
         @close="closeMobileSidebar"
         @logout="handleLogout"
@@ -292,7 +423,21 @@ export default defineComponent({
         />
 
         <p v-if="loadError" class="alert alert-warning mt-3" role="alert">{{ loadError }}</p>
-        <p v-else-if="isLoading" class="text-muted mt-4" role="status">Memuat data dashboard...</p>
+        <p v-if="isLoading" class="text-muted mt-4" role="status">Memuat data dashboard...</p>
+
+        <div v-else-if="activeNav === 'pengguna' && isAdmin" class="mt-4">
+          <UserManagementPanel
+            :users="users"
+            :is-loading="isLoadingUsers"
+            :is-saving="isCreatingUser"
+            :updating-user-id="updatingUserId"
+            :error="userManagementError"
+            :success="userManagementSuccess"
+            @reload="loadUsers"
+            @create-user="createUser"
+            @manage-user="handleUserAction"
+          />
+        </div>
 
         <div v-else id="beranda" class="mt-4">
           <section class="d-flex flex-column flex-md-row justify-content-between align-items-md-end gap-3 mb-4">
@@ -302,8 +447,12 @@ export default defineComponent({
               <p class="text-muted small fw-semibold mb-0">MONITORING KINERJAAN PENGGUNAAN RUANGAN</p>
             </div>
             <div class="d-flex gap-2 flex-wrap">
-              <button class="btn btn-outline-secondary rounded-2 d-inline-flex align-items-center gap-2"><Download :size="16" aria-hidden="true" />Ekspor laporan</button>
-              <button class="btn btn-primary rounded-2 d-inline-flex align-items-center gap-2" @click="openCreateRequest"><Plus :size="16" aria-hidden="true" />Buat permintaan</button>
+              <button
+                v-if="isAdmin"
+                class="btn btn-outline-secondary rounded-2 d-inline-flex align-items-center gap-2"
+                type="button"
+                @click="openReportExport"
+              ><Download :size="16" aria-hidden="true" />Ekspor laporan</button>
             </div>
           </section>
 
@@ -321,22 +470,25 @@ export default defineComponent({
               @manage-rooms="isRoomManagerOpen = true"
             />
           </div>
-          <div class="mt-4"><RequestTable :requests="filteredRequests" :can-review="canManage" :reviewing-request-id="reviewingRequestId" @show-request="showRequest" @approve-request="approveRequest" /></div>
+          <div class="mt-4">
+            <RequestTable
+              :requests="filteredRequests"
+              :can-review="isAdmin"
+              :reviewing-request-id="reviewingRequestId"
+              @show-request="showRequest"
+              @approve-request="approveRequest"
+            />
+          </div>
         </div>
       </main>
     </div>
 
     <RequestModal
       :request="selectedRequest"
-      :create-open="isCreateRequestOpen"
-      :rooms="rooms"
-      :is-submitting="isSubmittingRequest"
-      :error="requestError"
-      :can-review="canManage"
+      :can-review="isAdmin"
       :is-reviewing="Boolean(reviewingRequestId)"
       :review-error="reviewError"
       @close="closeRequest"
-      @create="createRequest"
       @approve="approveRequest"
       @reject="rejectRequest"
     />
@@ -349,11 +501,38 @@ export default defineComponent({
       @save="saveManagedRoom"
       @toggle-active="toggleRoomActive"
     />
+    <PasswordChangePrompt
+      :open="showPasswordChangePrompt"
+      @change-now="changePasswordNow"
+      @later="showPasswordChangePrompt = false"
+    />
+    <ReportExportModal
+      :open="isReportExportOpen"
+      :from="reportFrom"
+      :to="reportTo"
+      :is-exporting="isExportingReport"
+      :error="reportExportError"
+      @close="isReportExportOpen = false"
+      @export="exportReport"
+      @update:from="reportFrom = $event"
+      @update:to="reportTo = $event"
+    />
+    <div v-if="reviewError" class="alert alert-danger review-error-toast shadow" role="alert">
+      {{ reviewError }}
+    </div>
   </div>
 </template>
 
 <style scoped>
 .dashboard-content {
   min-width: 0;
+}
+
+.review-error-toast {
+  position: fixed;
+  z-index: 1090;
+  top: 1rem;
+  right: 1rem;
+  width: min(32rem, calc(100vw - 2rem));
 }
 </style>

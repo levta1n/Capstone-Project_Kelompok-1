@@ -50,8 +50,8 @@ export default defineComponent({
         </div>
         <div class="d-flex flex-column flex-sm-row align-items-sm-end gap-2">
           <form class="d-flex flex-column flex-sm-row align-items-sm-end gap-2" @submit.prevent="checkSchedule">
-            <div><label class="form-label small mb-1" for="availability-start">Mulai</label><input id="availability-start" v-model="draftStartsAt" class="form-control form-control-sm" type="datetime-local" required /></div>
-            <div><label class="form-label small mb-1" for="availability-end">Selesai</label><input id="availability-end" v-model="draftEndsAt" class="form-control form-control-sm" type="datetime-local" required /></div>
+            <div><label class="form-label small mb-1" for="availability-start">Mulai (WIB)</label><input id="availability-start" v-model="draftStartsAt" class="form-control form-control-sm" type="datetime-local" required /></div>
+            <div><label class="form-label small mb-1" for="availability-end">Selesai (WIB)</label><input id="availability-end" v-model="draftEndsAt" class="form-control form-control-sm" type="datetime-local" required /></div>
             <button class="btn btn-sm btn-primary text-nowrap d-inline-flex align-items-center gap-2" type="submit" :disabled="isChecking"><CalendarClock :size="16" aria-hidden="true" />{{ isChecking ? 'Mengecek...' : 'Cek jadwal' }}</button>
           </form>
           <button v-if="canManage" class="btn btn-sm btn-outline-primary text-nowrap" type="button" @click="$emit('manage-rooms')">Kelola ruangan</button>

@@ -1,8 +1,11 @@
 <script>
 import { defineComponent } from 'vue'
+import { X } from '@lucide/vue'
+import { APPLICATION_TIME_ZONE, formatAppDateTime, parseAppDateTime } from '../../utils/dateTime'
 
 export default defineComponent({
   name: 'RequestModal',
+  components: { X },
   props: {
     request: {
       type: Object,
@@ -52,21 +55,29 @@ export default defineComponent({
       type: Boolean,
       default: false,
     },
+    canCancel: {
+      type: Boolean,
+      default: false,
+    },
+    isCancelling: {
+      type: Boolean,
+      default: false,
+    },
   },
-  emits: ['close', 'create', 'approve', 'reject'],
+  emits: ['close', 'create', 'cancel', 'approve', 'reject'],
   data() {
     return {
       form: {
         roomId: '',
-        requestType: 'room_booking',
         purpose: '',
         startsAt: '',
         endsAt: '',
         participantCount: 1,
       },
+      minimumStartsAt: '',
+      durationHours: 1,
       isRejecting: false,
-      rejectionCategory: 'Jadwal bertabrakan',
-      rejectionNote: '',
+      rejectionReason: '',
     }
   },
   watch: {
@@ -75,35 +86,59 @@ export default defineComponent({
     },
     request() {
       this.isRejecting = false
-      this.rejectionCategory = 'Jadwal bertabrakan'
-      this.rejectionNote = ''
+      this.rejectionReason = ''
     },
   },
   computed: {
     canDecide() {
-      return this.canReview && ['Menunggu', 'Proses'].includes(this.request?.status)
+      return this.canReview && this.request?.status === 'Menunggu'
     },
   },
   methods: {
     resetForm() {
+      this.minimumStartsAt = formatAppDateTime(new Date())
       this.form = {
         roomId: this.initialRoomId || this.rooms[0]?.id || '',
-        requestType: 'room_booking',
         purpose: '',
         startsAt: this.initialStartsAt,
         endsAt: this.initialEndsAt,
         participantCount: 1,
+      }
+      this.durationHours = 1
+    },
+    toLocalDateTimeInput(date) {
+      return formatAppDateTime(date)
+    },
+    setDuration(hours) {
+      const startsAt = parseAppDateTime(this.form.startsAt)
+      if (!Number.isFinite(startsAt.getTime())) return
+
+      this.durationHours = hours
+      this.form.endsAt = this.toLocalDateTimeInput(new Date(startsAt.getTime() + hours * 60 * 60 * 1000))
+    },
+    keepEndAfterStart() {
+      const startsAt = parseAppDateTime(this.form.startsAt)
+      const endsAt = parseAppDateTime(this.form.endsAt)
+      if (Number.isFinite(startsAt.getTime()) && (!Number.isFinite(endsAt.getTime()) || endsAt <= startsAt)) {
+        this.setDuration(this.durationHours)
       }
     },
     submitRequest() {
       this.$emit('create', { ...this.form })
     },
     submitRejection() {
-      const note = this.rejectionNote.trim()
       this.$emit('reject', {
         request: this.request,
-        reason: note ? `${this.rejectionCategory}: ${note}` : this.rejectionCategory,
+        reason: this.rejectionReason.trim(),
       })
+    },
+    formatDateTime(value) {
+      if (!value) return '-'
+      return new Intl.DateTimeFormat('id-ID', {
+        dateStyle: 'full',
+        timeStyle: 'short',
+        timeZone: APPLICATION_TIME_ZONE,
+      }).format(new Date(value))
     },
   },
 })
@@ -118,7 +153,7 @@ export default defineComponent({
           <button type="button" class="btn-close" aria-label="Tutup form" @click="$emit('close')"></button>
         </div>
         <div v-else class="modal-header border-0">
-          <div><span class="text-primary small fw-bold text-uppercase">Detail permintaan</span><h2 class="modal-title h5 fw-bold">{{ request.id }}</h2></div>
+          <div><span class="text-primary small fw-bold text-uppercase">Detail peminjaman</span><h2 class="modal-title h5 fw-bold">{{ request.id }}</h2></div>
           <button type="button" class="btn-close" aria-label="Tutup detail" @click="$emit('close')"></button>
         </div>
         <form v-if="createOpen" id="create-request-form" class="modal-body" @submit.prevent="submitRequest">
@@ -131,62 +166,56 @@ export default defineComponent({
             </select>
             <small v-if="rooms.length === 0" class="text-danger">Belum ada ruangan aktif yang tersedia.</small>
           </div>
-          <div class="row g-3 mb-3">
-            <div class="col-sm-7">
-              <label class="form-label" for="request-type">Jenis permintaan</label>
-              <select id="request-type" v-model="form.requestType" class="form-select" required>
-                <option value="room_booking">Peminjaman</option>
-                <option value="registration">Pendaftaran</option>
-              </select>
-            </div>
-            <div class="col-sm-5">
-              <label class="form-label" for="request-participants">Jumlah peserta</label>
-              <input id="request-participants" v-model.number="form.participantCount" class="form-control" type="number" min="1" required />
-            </div>
+          <div class="mb-3">
+            <label class="form-label" for="request-participants">Jumlah peserta</label>
+            <input id="request-participants" v-model.number="form.participantCount" class="form-control" type="number" min="1" required />
           </div>
           <div class="row g-3 mb-3">
             <div class="col-sm-6">
-              <label class="form-label" for="request-starts">Waktu mulai</label>
-              <input id="request-starts" v-model="form.startsAt" class="form-control" type="datetime-local" :readonly="scheduleReadOnly" required />
+              <label class="form-label" for="request-starts">Waktu mulai (WIB)</label>
+              <input id="request-starts" v-model="form.startsAt" class="form-control" type="datetime-local" :min="minimumStartsAt" :readonly="scheduleReadOnly" required @change="keepEndAfterStart" />
             </div>
             <div class="col-sm-6">
-              <label class="form-label" for="request-ends">Waktu selesai</label>
+              <label class="form-label" for="request-ends">Waktu selesai (WIB)</label>
               <input id="request-ends" v-model="form.endsAt" class="form-control" type="datetime-local" :readonly="scheduleReadOnly" required />
             </div>
           </div>
+          <fieldset class="mb-3">
+            <legend class="form-label">Pengajuan cepat</legend>
+            <div class="btn-group btn-group-sm" role="group" aria-label="Pilih durasi peminjaman">
+              <button v-for="hours in [1, 2, 3, 4]" :key="hours" class="btn" :class="durationHours === hours ? 'btn-primary' : 'btn-outline-primary'" type="button" :disabled="!form.startsAt" :aria-pressed="durationHours === hours" @click="setDuration(hours)">{{ hours }} jam</button>
+            </div>
+          </fieldset>
           <div>
             <label class="form-label" for="request-purpose">Tujuan penggunaan</label>
             <textarea id="request-purpose" v-model="form.purpose" class="form-control" rows="3" maxlength="1000" required></textarea>
           </div>
         </form>
         <div v-else class="modal-body">
-          <div v-if="reviewError && canDecide && !isRejecting" class="alert alert-danger" role="alert">{{ reviewError }}</div>
+          <p v-if="reviewError" class="alert alert-danger" role="alert">{{ reviewError }}</p>
           <div class="row g-3">
             <div class="col-6"><span class="text-muted small d-block">Pengguna</span><strong class="fs-6">{{ request.requester }}</strong></div>
-            <div class="col-6"><span class="text-muted small d-block">Unit</span><strong class="fs-6">{{ request.unit }}</strong></div>
+            <div v-if="request.unit" class="col-6"><span class="text-muted small d-block">Unit</span><strong class="fs-6">{{ request.unit }}</strong></div>
             <div class="col-6"><span class="text-muted small d-block">Ruangan</span><strong class="fs-6">{{ request.room }}</strong></div>
-            <div class="col-6"><span class="text-muted small d-block">Pemilik</span><strong class="fs-6">{{ request.owner }}</strong></div>
             <div class="col-6"><span class="text-muted small d-block">Jenis</span><strong class="fs-6">{{ request.type }}</strong></div>
             <div class="col-6"><span class="text-muted small d-block">Status</span><strong class="fs-6">{{ request.status }}</strong></div>
+            <div class="col-12"><span class="text-muted small d-block">Mulai</span><strong class="fs-6">{{ formatDateTime(request.startsAt) }}</strong></div>
+            <div class="col-12"><span class="text-muted small d-block">Selesai</span><strong class="fs-6">{{ formatDateTime(request.endsAt) }}</strong></div>
+            <div class="col-6"><span class="text-muted small d-block">Jumlah peserta</span><strong class="fs-6">{{ request.participantCount }}</strong></div>
+            <div v-if="request.purpose" class="col-12"><span class="text-muted small d-block">Tujuan penggunaan</span><strong class="fs-6 text-break">{{ request.purpose }}</strong></div>
+            <div v-if="request.cancellationReason" class="col-12"><span class="text-muted small d-block">Alasan pembatalan</span><strong class="fs-6">{{ request.cancellationReason }}</strong></div>
             <div v-if="request.rejectionReason" class="col-12"><span class="text-muted small d-block">Alasan penolakan</span><strong class="fs-6">{{ request.rejectionReason }}</strong></div>
           </div>
           <form v-if="isRejecting && canDecide" id="reject-request-form" class="mt-4" @submit.prevent="submitRejection">
-            <div v-if="reviewError" class="alert alert-danger" role="alert">{{ reviewError }}</div>
-            <div class="mb-3">
-              <label class="form-label" for="rejection-category">Alasan penolakan</label>
-              <select id="rejection-category" v-model="rejectionCategory" class="form-select" required>
-                <option>Jadwal bertabrakan</option>
-                <option>Kapasitas ruangan tidak mencukupi</option>
-                <option>Ruangan tidak tersedia</option>
-                <option>Data pengajuan belum lengkap</option>
-                <option>Tidak sesuai ketentuan</option>
-                <option>Lainnya</option>
-              </select>
-            </div>
-            <div>
-              <label class="form-label" for="rejection-note">Catatan tambahan <span class="text-muted">(opsional)</span></label>
-              <textarea id="rejection-note" v-model="rejectionNote" class="form-control" rows="2" maxlength="500" placeholder="Tulis keterangan untuk pemohon"></textarea>
-            </div>
+            <label class="form-label" for="request-rejection-reason">Alasan penolakan</label>
+            <textarea
+              id="request-rejection-reason"
+              v-model.trim="rejectionReason"
+              class="form-control"
+              rows="3"
+              maxlength="500"
+              required
+            ></textarea>
           </form>
         </div>
         <div v-if="createOpen" class="modal-footer border-0">
@@ -195,14 +224,22 @@ export default defineComponent({
         </div>
         <div v-else-if="canDecide" class="modal-footer border-0">
           <template v-if="isRejecting">
-            <button class="btn btn-outline-secondary rounded-2" type="button" :disabled="isReviewing" @click="isRejecting = false">Kembali</button>
-            <button class="btn btn-danger rounded-2" type="submit" form="reject-request-form" :disabled="isReviewing">{{ isReviewing ? 'Menyimpan...' : 'Konfirmasi penolakan' }}</button>
+            <button class="btn btn-outline-secondary" type="button" :disabled="isReviewing" @click="isRejecting = false">Kembali</button>
+            <button class="btn btn-danger" type="submit" form="reject-request-form" :disabled="isReviewing">
+              {{ isReviewing ? 'Menyimpan...' : 'Konfirmasi penolakan' }}
+            </button>
           </template>
           <template v-else>
-            <button class="btn btn-outline-secondary rounded-2" type="button" @click="$emit('close')">Tutup detail</button>
-            <button class="btn btn-outline-danger rounded-2" type="button" :disabled="isReviewing" @click="isRejecting = true">Tolak</button>
-            <button class="btn btn-success rounded-2" type="button" :disabled="isReviewing" @click="$emit('approve', request)">{{ isReviewing ? 'Menyimpan...' : 'Setujui' }}</button>
+            <button class="btn btn-outline-secondary" type="button" @click="$emit('close')">Tutup detail</button>
+            <button class="btn btn-outline-danger" type="button" :disabled="isReviewing" @click="isRejecting = true">Tolak</button>
+            <button class="btn btn-success" type="button" :disabled="isReviewing" @click="$emit('approve', request)">
+              {{ isReviewing ? 'Menyimpan...' : 'Terima permintaan' }}
+            </button>
           </template>
+        </div>
+        <div v-else-if="canCancel" class="modal-footer border-0">
+          <button class="btn btn-outline-secondary rounded-2" type="button" @click="$emit('close')">Tutup detail</button>
+          <button class="btn btn-outline-danger rounded-2 d-inline-flex align-items-center gap-2" type="button" :disabled="isCancelling" @click="$emit('cancel', request)"><X :size="16" aria-hidden="true" />{{ isCancelling ? 'Membatalkan...' : 'Batalkan pengajuan' }}</button>
         </div>
         <div v-else class="modal-footer border-0"><button class="btn btn-primary rounded-2" @click="$emit('close')">Tutup detail</button></div>
       </div>

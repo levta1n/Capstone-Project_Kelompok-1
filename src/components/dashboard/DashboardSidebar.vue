@@ -4,9 +4,9 @@ import {
   Building2,
   ChartNoAxesColumnIncreasing,
   ClipboardList,
+  DoorOpen,
   LayoutDashboard,
   LogOut,
-  Settings,
   Users,
 } from '@lucide/vue'
 
@@ -33,14 +33,30 @@ export default defineComponent({
       type: String,
       default: 'Pengguna',
     },
+    pendingApprovalCount: {
+      type: Number,
+      default: 0,
+    },
+    isAdmin: {
+      type: Boolean,
+      default: false,
+    },
+    canManage: {
+      type: Boolean,
+      default: false,
+    },
+    roomManagerOpen: {
+      type: Boolean,
+      default: false,
+    },
   },
   components: {
     Building2,
     ChartNoAxesColumnIncreasing,
     ClipboardList,
+    DoorOpen,
     LayoutDashboard,
     LogOut,
-    Settings,
     Users,
   },
   emits: ['navigate', 'close', 'logout'],
@@ -74,12 +90,14 @@ export default defineComponent({
     <nav class="nav flex-column gap-1" aria-label="Navigasi utama">
       <p class="text-white-50 small fw-bold text-uppercase px-3 mb-2">Menu utama</p>
       <button class="nav-link btn btn-link text-start text-white d-flex align-items-center gap-2 rounded-2" :class="{ 'bg-white bg-opacity-10': activeNav === 'beranda' }" @click="navigate('beranda')"><LayoutDashboard :size="18" aria-hidden="true" />Beranda</button>
-      <button class="nav-link btn btn-link text-start text-white d-flex align-items-center gap-2 rounded-2" :class="{ 'bg-white bg-opacity-10': activeNav === 'permintaan' }" @click="navigate('permintaan')"><ClipboardList :size="18" aria-hidden="true" />Permintaan <span class="badge bg-light text-dark ms-auto">8</span></button>
+      <button class="nav-link btn btn-link text-start text-white d-flex align-items-center gap-2 rounded-2" :class="{ 'bg-white bg-opacity-10': activeNav === 'permintaan' }" @click="navigate('permintaan')"><ClipboardList :size="18" aria-hidden="true" />Permintaan <span v-if="pendingApprovalCount > 0" class="badge bg-light text-dark ms-auto" :aria-label="`${pendingApprovalCount} permintaan menunggu`">{{ pendingApprovalCount }}</span></button>
       <button class="nav-link btn btn-link text-start text-white d-flex align-items-center gap-2 rounded-2" :class="{ 'bg-white bg-opacity-10': activeNav === 'ruangan' }" @click="navigate('ruangan')"><Building2 :size="18" aria-hidden="true" />Daftar ruangan</button>
       <button class="nav-link btn btn-link text-start text-white d-flex align-items-center gap-2 rounded-2" :class="{ 'bg-white bg-opacity-10': activeNav === 'laporan' }" @click="navigate('laporan')"><ChartNoAxesColumnIncreasing :size="18" aria-hidden="true" />Laporan</button>
-      <p class="text-white-50 small fw-bold text-uppercase px-3 mt-4 mb-2">Manajemen</p>
-      <button class="nav-link btn btn-link text-start text-white d-flex align-items-center gap-2 rounded-2" @click="navigate('pengguna')"><Users :size="18" aria-hidden="true" />Pengguna</button>
-      <button class="nav-link btn btn-link text-start text-white d-flex align-items-center gap-2 rounded-2" @click="navigate('pengaturan')"><Settings :size="18" aria-hidden="true" />Pengaturan</button>
+      <template v-if="canManage">
+        <p class="text-white-50 small fw-bold text-uppercase px-3 mt-4 mb-2">Manajemen</p>
+        <button v-if="!isAdmin" class="nav-link btn btn-link text-start text-white d-flex align-items-center gap-2 rounded-2" :class="{ 'bg-white bg-opacity-10': roomManagerOpen }" @click="navigate('kelola-ruangan')"><DoorOpen :size="18" aria-hidden="true" />Kelola ruangan</button>
+        <button v-if="isAdmin" class="nav-link btn btn-link text-start text-white d-flex align-items-center gap-2 rounded-2" :class="{ 'bg-white bg-opacity-10': activeNav === 'pengguna' }" @click="navigate('pengguna')"><Users :size="18" aria-hidden="true" />Pengguna</button>
+      </template>
     </nav>
 
     <div class="d-flex align-items-center gap-2 mt-auto border-top border-white border-opacity-10 pt-3">

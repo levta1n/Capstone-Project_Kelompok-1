@@ -5,17 +5,18 @@ import MyRequestsList from '../components/requester/MyRequestsList.vue'
 import RequesterHeader from '../components/requester/RequesterHeader.vue'
 import RoomScheduleAvailability from '../components/requester/RoomScheduleAvailability.vue'
 import RequestModal from '../components/dashboard/RequestModal.vue'
-import { createReservation, listReservations, subscribeToReservations } from '../services/reservationService'
+import { cancelReservation, createReservation, listReservations, subscribeToReservations } from '../services/reservationService'
 import { getRoomAvailabilityFor, subscribeToRoomChanges } from '../services/roomService'
-import { getProfile, signOut } from '../services/profileService'
+import { getProfile, shouldPromptPasswordChange, signOut } from '../services/profileService'
 import { supabase } from '../utils/supabase'
+import { formatAppDateTime, parseAppDateTime } from '../utils/dateTime'
+import PasswordChangePrompt from '../components/dashboard/PasswordChangePrompt.vue'
 
 function getDefaultScheduleRange() {
-  const startsAt = new Date()
-  startsAt.setHours(startsAt.getHours() + 1, 0, 0, 0)
+  const startsAt = parseAppDateTime(formatAppDateTime(new Date(Date.now() + 60 * 60 * 1000)))
+  startsAt.setUTCMinutes(0, 0, 0)
   const endsAt = new Date(startsAt.getTime() + 60 * 60 * 1000)
-  const toLocalInput = (date) => new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)
-  return { startsAt: toLocalInput(startsAt), endsAt: toLocalInput(endsAt) }
+  return { startsAt: formatAppDateTime(startsAt), endsAt: formatAppDateTime(endsAt) }
 }
 
 export default defineComponent({
@@ -25,6 +26,7 @@ export default defineComponent({
     Check,
     Clock3,
     MyRequestsList,
+    PasswordChangePrompt,
     Plus,
     RequesterHeader,
     RequestModal,
@@ -34,6 +36,8 @@ export default defineComponent({
     const schedule = getDefaultScheduleRange()
     return {
       profile: null,
+      showPasswordChangePrompt: false,
+      hasCheckedPasswordPrompt: false,
       requests: [],
       rooms: [],
       scheduleStart: schedule.startsAt,
@@ -45,7 +49,9 @@ export default defineComponent({
       loadError: '',
       isCreateRequestOpen: false,
       isSubmittingRequest: false,
+      isCancellingRequest: false,
       requestError: '',
+      cancellationError: '',
       selectedRequest: null,
       stopRequestSubscription: null,
       stopRoomSubscription: null,
@@ -53,7 +59,12 @@ export default defineComponent({
   },
   computed: {
     activeRequests() {
-      return this.requests.filter((request) => ['Menunggu', 'Proses'].includes(request.status)).length
+      return this.requests.filter((request) =>
+        request.status === 'Diterima' && new Date(request.endsAt).getTime() > Date.now(),
+      ).length
+    },
+    pendingRequests() {
+      return this.requests.filter((request) => request.status === 'Menunggu').length
     },
     acceptedRequests() {
       return this.requests.filter((request) => request.status === 'Diterima').length
@@ -91,6 +102,12 @@ export default defineComponent({
         }
 
         this.profile = profile
+        if (!this.hasCheckedPasswordPrompt) {
+          this.showPasswordChangePrompt = Boolean(
+            profile.must_change_password && shouldPromptPasswordChange(user.id),
+          )
+          this.hasCheckedPasswordPrompt = true
+        }
         this.requests = requests
         await this.checkSchedule({ startsAt: this.scheduleStart, endsAt: this.scheduleEnd })
 
@@ -128,6 +145,11 @@ export default defineComponent({
       this.selectedRoomId = room?.id || this.availableRooms[0]?.id || ''
       this.isCreateRequestOpen = true
     },
+    canCancelRequest(request) {
+      return Boolean(request)
+        && ['Menunggu', 'Diterima'].includes(request.status)
+        && new Date(request.startsAt).getTime() > Date.now()
+    },
     closeModal() {
       this.isCreateRequestOpen = false
       this.selectedRequest = null
@@ -148,6 +170,20 @@ export default defineComponent({
         this.isSubmittingRequest = false
       }
     },
+    async cancelRequest(request) {
+      if (!this.profile || !this.canCancelRequest(request)) return
+      this.isCancellingRequest = true
+      this.cancellationError = ''
+      try {
+        await cancelReservation(request.databaseId)
+        if (this.selectedRequest?.databaseId === request.databaseId) this.selectedRequest = null
+        await this.loadDashboard()
+      } catch (error) {
+        this.cancellationError = `Pengajuan gagal dibatalkan: ${error.message}`
+      } finally {
+        this.isCancellingRequest = false
+      }
+    },
     async handleLogout() {
       try {
         await signOut()
@@ -158,6 +194,10 @@ export default defineComponent({
     },
     scrollToRequests() {
       document.getElementById('requests-list')?.scrollIntoView({ behavior: 'smooth' })
+    },
+    changePasswordNow() {
+      this.showPasswordChangePrompt = false
+      this.$router.push({ name: 'change-password' })
     },
   },
 })
@@ -173,6 +213,7 @@ export default defineComponent({
       </div>
       <div v-else-if="isLoading" class="text-muted py-5" role="status">Memuat halaman pemohon...</div>
       <template v-else>
+        <p v-if="cancellationError" class="alert alert-danger" role="alert">{{ cancellationError }}</p>
         <section class="requester-intro d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-4 mb-4">
           <div>
             <p class="text-primary small text-uppercase fw-bold mb-2">Portal peminjaman ruangan</p>
@@ -186,7 +227,7 @@ export default defineComponent({
         </section>
 
         <section class="requester-summary d-flex flex-wrap align-items-center gap-4 px-3 px-md-4 py-3 mb-4 bg-white border rounded-3" aria-label="Ringkasan permintaan">
-          <div class="d-flex align-items-center gap-2"><Clock3 class="text-warning" :size="18" aria-hidden="true" /><span class="small text-muted">Menunggu</span><strong>{{ activeRequests }}</strong></div>
+          <div class="d-flex align-items-center gap-2"><Clock3 class="text-warning" :size="18" aria-hidden="true" /><span class="small text-muted">Menunggu persetujuan</span><strong>{{ pendingRequests }}</strong></div>
           <div class="d-flex align-items-center gap-2"><Check class="text-success" :size="18" aria-hidden="true" /><span class="small text-muted">Diterima</span><strong>{{ acceptedRequests }}</strong></div>
           <div class="d-flex align-items-center gap-2"><span class="small text-muted">Ruangan tersedia untuk jadwal</span><strong>{{ availableRooms.length }}</strong></div>
         </section>
@@ -201,7 +242,7 @@ export default defineComponent({
             @check="checkSchedule"
             @request-room="openRequestForm"
           />
-          <MyRequestsList :requests="requests" @create="openRequestForm" @show-request="selectedRequest = $event" @see-all="scrollToRequests" />
+          <MyRequestsList :requests="requests" @create="openRequestForm" @show-request="selectedRequest = $event" @see-all="scrollToRequests" @cancel-request="cancelRequest" />
         </div>
       </template>
     </main>
@@ -215,9 +256,16 @@ export default defineComponent({
       :initial-room-id="selectedRoomId"
       :initial-starts-at="scheduleStart"
       :initial-ends-at="scheduleEnd"
-      schedule-read-only
+      :can-cancel="canCancelRequest(selectedRequest)"
+      :is-cancelling="isCancellingRequest"
       @close="closeModal"
       @create="submitRequest"
+      @cancel="cancelRequest"
+    />
+    <PasswordChangePrompt
+      :open="showPasswordChangePrompt"
+      @change-now="changePasswordNow"
+      @later="showPasswordChangePrompt = false"
     />
   </div>
 </template>

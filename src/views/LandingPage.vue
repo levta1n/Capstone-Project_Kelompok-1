@@ -19,7 +19,9 @@ export default defineComponent({
       email: '',
       password: '',
       error: '',
+      notice: '',
       isSubmitting: false,
+      isSendingReset: false,
       isAccessNoticeOpen: false,
     }
   },
@@ -30,6 +32,31 @@ export default defineComponent({
     },
     closeAccessNotice() {
       this.isAccessNoticeOpen = false
+    },
+    async sendPasswordReset() {
+      this.error = ''
+      this.notice = ''
+      if (!this.email.trim()) {
+        this.error = 'Masukkan email akun terlebih dahulu untuk menerima tautan reset.'
+        return
+      }
+      if (!supabase) {
+        this.error = 'Koneksi Supabase belum dikonfigurasi. Periksa environment aplikasi.'
+        return
+      }
+
+      this.isSendingReset = true
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(this.email.trim(), {
+          redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}reset-password`,
+        })
+        if (error) throw error
+        this.notice = 'Jika email terdaftar, tautan untuk mengatur ulang kata sandi akan dikirim.'
+      } catch (error) {
+        this.error = `Tautan reset gagal dikirim: ${error.message}`
+      } finally {
+        this.isSendingReset = false
+      }
     },
     async handleLogin(event) {
       event.preventDefault()
@@ -120,7 +147,7 @@ export default defineComponent({
                 <label class="form-label fw-semibold" for="email">Email akun</label>
                 <div class="input-group">
                   <span class="input-group-text bg-light border-end-0"><Mail /></span>
-                  <input id="email" v-model="email" class="form-control border-start-0" type="email" autocomplete="email" placeholder="nama@kampus.edu" required />
+                  <input id="email" v-model="email" class="form-control border-start-0" type="email" autocomplete="email" placeholder="nim@ecampus.ut.ac.id" required />
                 </div>
               </div>
               <div class="mb-3">
@@ -131,11 +158,15 @@ export default defineComponent({
                 </div>
               </div>
               <p v-if="error" class="alert alert-danger mb-3" role="alert">{{ error }}</p>
+              <p v-if="notice" class="alert alert-info mb-3" role="status">{{ notice }}</p>
               <button class="btn btn-primary w-100 rounded-2 py-3 fw-bold" type="submit" :disabled="isSubmitting">
                 {{ isSubmitting ? 'Memuat sistem...' : 'Masuk ke dashboard' }}
               </button>
             </form>
 
+            <button class="btn btn-link btn-sm px-0 mt-3" type="button" :disabled="isSendingReset" @click="sendPasswordReset">
+              {{ isSendingReset ? 'Mengirim tautan...' : 'Lupa kata sandi?' }}
+            </button>
             <div class="text-center mt-4 text-muted small">
               <span>Belum memiliki akun? </span>
               <a href="#akses" class="fw-bold" @click.prevent="openAccessNotice">Minta akses</a>
@@ -161,7 +192,7 @@ export default defineComponent({
         <p class="text-primary small fw-bold text-uppercase mb-1">Informasi akses akun</p>
         <h2 id="access-notice-title" class="h5 fw-bold text-dark mb-2">Registrasi melalui pihak terkait</h2>
         <p id="access-notice-message" class="text-muted mb-4">
-          Untuk sementara, silakan hubungi dosen atau kaprodi, maupun bagian Tata Usaha (TU), untuk meminta dibuatkan akses akun.
+          Sistem ini tidak menerima pendaftaran mandiri. Hubungi bagian Tata Usaha (TU) atau petugas yang berwenang agar meminta admin membuatkan akun.
         </p>
         <button class="btn btn-primary rounded-2 px-4" type="button" @click="closeAccessNotice">Mengerti</button>
       </section>
@@ -171,14 +202,14 @@ export default defineComponent({
       <div class="container">
         <div class="row g-4 align-items-center">
           <div class="col-lg-4">
-            <p class="mb-0 text-white-50">Dirancang untuk mendukung proses yang lebih tertib di lingkungan akademik.</p>
+            <p class="mb-0 text-white-50">Dikembangkan untuk mendukung proses tata kelola peminjaman ruangan.</p>
           </div>
           <div class="col-6 col-lg-2"><strong class="d-block fs-6">01 Permintaan</strong><small class="text-white-50">Pengajuan & persetujuan</small></div>
           <div class="col-6 col-lg-2"><strong class="d-block fs-6">02 Manajemen</strong><small class="text-white-50">Daftar & status ruangan</small></div>
           <div class="col-6 col-lg-2"><strong class="d-block fs-6">03 Pelaporan</strong><small class="text-white-50">Transaksi & kebutuhan</small></div>
         </div>
       </div>
-      <div class="text-center text-white-50 small mt-5">© 2026 SIMPERU/SIPERU. Sistem akademik.</div>
+      <div class="text-center text-white-50 small mt-5">© 2026 SIMPERU. Sistem Manajemem Peminjaman Ruangan.</div>
     </section>
   </main>
 </template>

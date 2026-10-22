@@ -1,12 +1,12 @@
 import { supabase } from '../utils/supabase'
+import { parseAppDateTime } from '../utils/dateTime'
 
 export async function listAvailableRooms() {
   if (!supabase) throw new Error('Konfigurasi Supabase tidak tersedia.')
 
   const { data, error } = await supabase
     .from('room_availability')
-    .select('room_id, name, floor_label, capacity, available_capacity, availability_status')
-    .eq('is_active', true)
+    .select('room_id, name, floor_label, capacity, availability_status')
     .order('name')
 
   if (error) throw error
@@ -16,7 +16,7 @@ export async function listAvailableRooms() {
     name: room.name,
     floor: room.floor_label,
     capacity: room.capacity,
-    available: room.available_capacity,
+    available: room.capacity,
     status: room.availability_status,
   }))
 }
@@ -24,8 +24,8 @@ export async function listAvailableRooms() {
 export async function getRoomAvailabilityFor(startsAt, endsAt) {
   if (!supabase) throw new Error('Konfigurasi Supabase tidak tersedia.')
 
-  const start = new Date(startsAt)
-  const end = new Date(endsAt)
+  const start = parseAppDateTime(startsAt)
+  const end = parseAppDateTime(endsAt)
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
     throw new Error('Pilih rentang waktu yang valid.')
   }
