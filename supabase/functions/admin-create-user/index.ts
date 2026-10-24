@@ -82,7 +82,7 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: 'Tanggal lahir tidak valid.' }, 400)
   }
 
-  const email = `${nim}@ecampus.ut.ac.id`
+  const email = `${nim}@campus.univ.ac.id`
   const defaultPassword = `${nim}${dateOfBirth.slice(8, 10)}${dateOfBirth.slice(5, 7)}${dateOfBirth.slice(0, 4)}`
   const { data: created, error: createError } = await adminClient.auth.admin.createUser({
     email,

@@ -41,6 +41,9 @@ export function mapReservation(request) {
 export async function listReservations(requesterId = null) {
   if (!supabase) throw new Error('Konfigurasi Supabase tidak tersedia.')
 
+  const { error: expiryError } = await supabase.rpc('expire_stale_reservation_requests')
+  if (expiryError) throw expiryError
+
   let query = supabase
     .from('reservation_requests')
     .select(`

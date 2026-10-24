@@ -90,7 +90,10 @@ export default defineComponent({
             <td><div class="d-flex align-items-center gap-2"><span class="requester-avatar badge bg-primary rounded-circle fs-6 d-inline-grid justify-content-center align-items-center">{{ request.requester.split(' ').map((part) => part[0]).join('').slice(0, 2) }}</span><div class="d-flex flex-column"><strong class="fs-6">{{ request.requester }}</strong><small class="text-muted">{{ request.unit }}</small></div></div></td>
             <td>{{ request.room }}</td>
             <td>{{ request.type }}</td>
-            <td><span :class="`badge rounded-pill ${statusClass(request.status)}`">{{ request.status }}</span></td>
+            <td>
+              <span :class="`badge rounded-pill ${statusClass(request.status)}`">{{ request.status }}</span>
+              <small v-if="request.rejectionReason" class="d-block text-danger mt-1">{{ request.rejectionReason }}</small>
+            </td>
             <td>{{ request.date }}</td>
             <td>
               <div class="d-flex align-items-center gap-1">

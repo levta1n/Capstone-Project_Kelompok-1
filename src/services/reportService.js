@@ -1,6 +1,6 @@
 import JSZip from 'jszip'
 import { jsPDF } from 'jspdf'
-import * as XLSX from 'xlsx'
+import ExcelJS from 'exceljs'
 import { supabase } from '../utils/supabase'
 
 const statusLabels = {
@@ -49,12 +49,12 @@ function formatDurationHours(value) {
   return parts.join(' ') || '0 menit'
 }
 
-function createWorkbook(detailRows, roomRows, from, to) {
-  const workbook = XLSX.utils.book_new()
-  workbook.Props = {
-    Title: 'Laporan Peminjaman Ruangan SIMPERU',
-    Subject: `Periode ${from} sampai ${to}`,
-    Author: 'SIMPERU',
+async function createWorkbook(detailRows, roomRows, from, to) {
+  const workbook = new ExcelJS.Workbook()
+  workbook.properties = {
+    title: 'Laporan Peminjaman Ruangan SIMPERU',
+    subject: `Periode ${from} sampai ${to}`,
+    creator: 'SIMPERU',
   }
 
   const detailData = [
@@ -103,9 +103,10 @@ function createWorkbook(detailRows, roomRows, from, to) {
       formatDateTime(row.created_at),
     ]),
   ]
-  const detailsSheet = XLSX.utils.aoa_to_sheet(detailData)
-  detailsSheet['!cols'] = [20, 26, 16, 22, 20, 22, 16, 38, 24, 24, 16, 18, 16, 24, 24, 36, 24, 24, 36, 24]
-  XLSX.utils.book_append_sheet(workbook, detailsSheet, 'Detail Peminjaman')
+  const detailsSheet = workbook.addWorksheet('Detail Peminjaman')
+  detailsSheet.addRows(detailData)
+  detailsSheet.columns = [20, 26, 16, 22, 20, 22, 16, 38, 24, 24, 16, 18, 16, 24, 24, 36, 24, 24, 36, 24]
+    .map((width) => ({ width }))
 
   const roomData = [
     [
@@ -135,9 +136,10 @@ function createWorkbook(detailRows, roomRows, from, to) {
       Number(row.total_participants),
     ]),
   ]
-  const roomSheet = XLSX.utils.aoa_to_sheet(roomData)
-  roomSheet['!cols'] = [22, 24, 16, 20, 14, 14, 14, 16, 20, 26, 24]
-  XLSX.utils.book_append_sheet(workbook, roomSheet, 'Statistik Ruangan')
+  const roomSheet = workbook.addWorksheet('Statistik Ruangan')
+  roomSheet.addRows(roomData)
+  roomSheet.columns = [22, 24, 16, 20, 14, 14, 14, 16, 20, 26, 24]
+    .map((width) => ({ width }))
 
   const guideData = [
     ['Panduan Membaca Laporan'],
@@ -148,10 +150,10 @@ function createWorkbook(detailRows, roomRows, from, to) {
     ['Lama Penggunaan (jam)', 'Durasi peminjaman yang disetujui. Nilai 1,5 berarti 1 jam 30 menit.'],
     ['Peserta', 'Jumlah peserta pada peminjaman yang disetujui.'],
   ]
-  const guideSheet = XLSX.utils.aoa_to_sheet(guideData)
-  guideSheet['!cols'] = [30, 90]
-  XLSX.utils.book_append_sheet(workbook, guideSheet, 'Panduan')
-  return XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+  const guideSheet = workbook.addWorksheet('Panduan')
+  guideSheet.addRows(guideData)
+  guideSheet.columns = [30, 90].map((width) => ({ width }))
+  return new Uint8Array(await workbook.xlsx.writeBuffer())
 }
 
 function createPdf(detailRows, roomRows, from, to, generatedAt) {
@@ -300,7 +302,7 @@ export async function exportReservationReport({ from, to }) {
   const roomRows = roomResult.data || []
   const generatedAt = new Date()
   const pdf = createPdf(detailRows, roomRows, from, to, generatedAt)
-  const workbook = createWorkbook(detailRows, roomRows, from, to)
+  const workbook = await createWorkbook(detailRows, roomRows, from, to)
   const zip = new JSZip()
   zip.file('Laporan-Peminjaman.pdf', pdf)
   zip.file('Statistik-Peminjaman.xlsx', workbook)

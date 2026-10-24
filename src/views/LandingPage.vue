@@ -2,6 +2,7 @@
 import { defineComponent } from 'vue'
 import { Building2, Check, Info, LockKeyhole, Mail, TrendingUp, X } from '@lucide/vue'
 import { supabase } from '../utils/supabase'
+import { getEmailSignInCandidates } from '../utils/accountEmail'
 
 export default defineComponent({
   name: 'LandingPage',
@@ -74,15 +75,22 @@ export default defineComponent({
 
       this.isSubmitting = true
       try {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: this.email.trim(),
-          password: this.password,
-        })
+        let loginSucceeded = false
+        for (const email of getEmailSignInCandidates(this.email)) {
+          const { error } = await supabase.auth.signInWithPassword({
+            email,
+            password: this.password,
+          })
 
-        if (error) {
-          this.error = error.message === 'Invalid login credentials'
-            ? 'Email atau kata sandi salah.'
-            : error.message
+          if (!error) {
+            loginSucceeded = true
+            break
+          }
+          if (error.message !== 'Invalid login credentials') throw error
+        }
+
+        if (!loginSucceeded) {
+          this.error = 'Email atau kata sandi salah.'
           return
         }
 
@@ -147,7 +155,7 @@ export default defineComponent({
                 <label class="form-label fw-semibold" for="email">Email akun</label>
                 <div class="input-group">
                   <span class="input-group-text bg-light border-end-0"><Mail /></span>
-                  <input id="email" v-model="email" class="form-control border-start-0" type="email" autocomplete="email" placeholder="nim@ecampus.ut.ac.id" required />
+                  <input id="email" v-model="email" class="form-control border-start-0" type="email" autocomplete="email" placeholder="NIM@campus.univ.ac.id" required />
                 </div>
               </div>
               <div class="mb-3">

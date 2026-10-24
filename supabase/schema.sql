@@ -306,9 +306,9 @@ BEGIN
   IF user_nim IS NOT NULL
      AND (
        user_nim !~ '^[0-9]{1,32}$'
-       OR lower(coalesce(new.email, '')) <> (user_nim || '@ecampus.ut.ac.id')
+       OR lower(coalesce(new.email, '')) <> (user_nim || '@campus.univ.ac.id')
      ) THEN
-    RAISE EXCEPTION 'Akun harus menggunakan NIM sebagai email @ecampus.ut.ac.id.'
+    RAISE EXCEPTION 'Akun harus menggunakan NIM sebagai email @campus.univ.ac.id.'
       USING ERRCODE = '23514';
   END IF;
 
@@ -523,6 +523,33 @@ DROP POLICY IF EXISTS "Only staff can update requests" ON public.reservation_req
 -- ---------------------------------------------------------------------------
 -- 9. RPC: pembatalan booking
 -- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.expire_stale_reservation_requests()
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+  expired_count INTEGER;
+BEGIN
+  IF (SELECT auth.uid()) IS NOT NULL
+     AND NOT (SELECT public.is_active_user()) THEN
+    RAISE EXCEPTION 'Akun tidak aktif.' USING ERRCODE = '42501';
+  END IF;
+
+  UPDATE public.reservation_requests AS request
+  SET status = 'rejected',
+      reviewed_by = NULL,
+      reviewed_at = now(),
+      rejection_reason = 'Permintaan otomatis ditolak karena waktu mulai telah lewat tanpa persetujuan admin.'
+  WHERE request.status = 'pending'
+    AND request.starts_at <= now();
+
+  GET DIAGNOSTICS expired_count = ROW_COUNT;
+  RETURN expired_count;
+END;
+$$;
+
 -- Permintaan yang otomatis ditolak oleh antrean dibuka kembali saat booking
 -- yang menghalangi jadwal tersebut dibatalkan.
 CREATE OR REPLACE FUNCTION public.restore_conflicting_reservation_queue(
@@ -638,6 +665,8 @@ BEGIN
   IF NOT (SELECT public.is_admin()) THEN
     RAISE EXCEPTION 'Hanya admin yang boleh melakukan ini.' USING ERRCODE = '42501';
   END IF;
+
+  PERFORM public.expire_stale_reservation_requests();
 
   IF p_status IS NULL OR p_status NOT IN ('accepted', 'rejected') THEN
     RAISE EXCEPTION 'Keputusan harus diterima atau ditolak.' USING ERRCODE = '22023';
@@ -1191,6 +1220,7 @@ $$;
 -- 13. Hak eksekusi fungsi RPC
 -- ---------------------------------------------------------------------------
 REVOKE ALL ON FUNCTION public.restore_conflicting_reservation_queue(UUID, TIMESTAMPTZ, TIMESTAMPTZ) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.expire_stale_reservation_requests() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.cancel_reservation(UUID) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.admin_review_reservation(UUID, TEXT, TEXT) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.admin_cancel_reservation(UUID, TEXT) FROM PUBLIC, anon;
@@ -1202,6 +1232,7 @@ REVOKE ALL ON FUNCTION public.admin_room_usage_report(TIMESTAMPTZ, TIMESTAMPTZ) 
 REVOKE ALL ON FUNCTION public.get_room_availability_for(TIMESTAMPTZ, TIMESTAMPTZ, TEXT, TEXT, INTEGER) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.cancel_reservation(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.expire_stale_reservation_requests() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_review_reservation(UUID, TEXT, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_cancel_reservation(UUID, TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_suspend_room(UUID, TEXT, BOOLEAN) TO authenticated;
@@ -1210,6 +1241,14 @@ GRANT EXECUTE ON FUNCTION public.mark_password_changed() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_booking_report(TIMESTAMPTZ, TIMESTAMPTZ, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_room_usage_report(TIMESTAMPTZ, TIMESTAMPTZ) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_room_availability_for(TIMESTAMPTZ, TIMESTAMPTZ, TEXT, TEXT, INTEGER) TO authenticated;
+
+-- Expire pending requests automatically even when nobody is using the app.
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+SELECT cron.schedule(
+  'expire-stale-reservation-requests',
+  '* * * * *',
+  'SELECT public.expire_stale_reservation_requests();'
+);
 
 -- ---------------------------------------------------------------------------
 -- 14. Data awal ruangan

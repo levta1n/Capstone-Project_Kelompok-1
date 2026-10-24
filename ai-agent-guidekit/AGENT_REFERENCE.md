@@ -30,7 +30,7 @@ Mode MCP ini untuk inspeksi saja. Jangan mencoba mengubah data, menjalankan migr
 ## Pembuatan akun dan data sensitif
 
 - Pembuatan akun requester dilakukan admin melalui UI aplikasi, bukan sign-up publik.
-- Email akun dibentuk dari NIM dengan domain `@ecampus.ut.ac.id`.
+- Email akun baru dibentuk dari NIM dengan domain `@campus.univ.ac.id`. Login tetap mendukung akun lama dengan domain `@ecampus.ut.ac.id` atau `@elearning.ut.ac.id`.
 - Password awal dibentuk dari NIM yang diikuti tanggal lahir berformat `ddmmyyyy`. Ini merupakan kredensial sensitif: jangan meminta atau menyalin NIM/tanggal lahir nyata ke prompt, contoh, log, test fixture publik, atau laporan.
 - Pengguna diminta mengganti password awal. Jangan pernah mencetak password, token sesi, API key, atau nilai secret dalam log maupun jawaban agent.
 - Fitur pembuatan dan pengelolaan akun menggunakan Supabase Edge Functions. `SUPABASE_SERVICE_ROLE_KEY` hanya boleh berada di secrets sisi server Supabase; key tersebut tidak boleh berada di browser atau konfigurasi MCP.

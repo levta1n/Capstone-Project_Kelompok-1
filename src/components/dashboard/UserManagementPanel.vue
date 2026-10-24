@@ -2,6 +2,8 @@
 import { defineComponent } from 'vue'
 import { Plus, RefreshCw, Users } from '@lucide/vue'
 
+const ACCOUNT_EMAIL_DOMAIN = 'campus.univ.ac.id'
+
 function emptyForm() {
   return { fullName: '', nim: '', dateOfBirth: '', unitName: '' }
 }
@@ -21,6 +23,11 @@ export default defineComponent({
   data() {
     return { form: emptyForm() }
   },
+  computed: {
+    accountEmailDomain() {
+      return ACCOUNT_EMAIL_DOMAIN
+    },
+  },
   watch: {
     success(message) {
       if (message) this.form = emptyForm()
@@ -34,7 +41,7 @@ export default defineComponent({
       return new Intl.DateTimeFormat('id-ID', { dateStyle: 'medium' }).format(new Date(value))
     },
     emailForNim(nim) {
-      return nim ? `${nim}@ecampus.ut.ac.id` : ''
+      return nim ? `${nim}@${ACCOUNT_EMAIL_DOMAIN}` : ''
     },
     requestUserAction(user, action) {
       const actionText = action === 'delete'
@@ -77,7 +84,7 @@ export default defineComponent({
         <div class="col-md-4"><label class="form-label" for="new-user-unit">Unit / Fakultas</label><input id="new-user-unit" v-model.trim="form.unitName" class="form-control" maxlength="120" placeholder="Opsional" /></div>
         <div class="col-12">
           <p class="small text-muted mb-0">
-            Email akun: <strong>{{ emailForNim(form.nim) || 'NIM@ecampus.ut.ac.id' }}</strong>.
+            Email akun: <strong>{{ emailForNim(form.nim) || `NIM@${accountEmailDomain}` }}</strong>.
             Password awal dibuat sebagai NIM + tanggal lahir (ddmmyyyy); pengguna wajib menggantinya saat login pertama.
           </p>
         </div>

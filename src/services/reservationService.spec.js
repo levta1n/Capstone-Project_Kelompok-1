@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { insertReservation, getRoomAvailabilityFor, reservationRows, reservationQuery } = vi.hoisted(() => {
+const {
+  insertReservation,
+  getRoomAvailabilityFor,
+  reservationRows,
+  reservationQuery,
+  expireStaleRequests,
+} = vi.hoisted(() => {
   const query = {
     select: vi.fn(),
     order: vi.fn(),
@@ -18,11 +24,13 @@ const { insertReservation, getRoomAvailabilityFor, reservationRows, reservationQ
     getRoomAvailabilityFor: vi.fn(),
     reservationRows: { value: [] },
     reservationQuery: query,
+    expireStaleRequests: vi.fn(),
   }
 })
 
 vi.mock('../utils/supabase', () => ({
   supabase: {
+    rpc: expireStaleRequests,
     from: vi.fn(() => ({
       insert: insertReservation,
       select: reservationQuery.select,
@@ -43,6 +51,8 @@ describe('createReservation', () => {
     insertReservation.mockReset()
     insertReservation.mockResolvedValue({ error: null })
     getRoomAvailabilityFor.mockReset()
+    expireStaleRequests.mockReset()
+    expireStaleRequests.mockResolvedValue({ data: 0, error: null })
     reservationRows.value = []
     getRoomAvailabilityFor.mockResolvedValue([
       { id: 'room-1', isAvailable: true, capacity: 10 },
@@ -94,6 +104,7 @@ describe('createReservation', () => {
 
     const requests = await listReservations()
 
+    expect(expireStaleRequests).toHaveBeenCalledWith('expire_stale_reservation_requests')
     expect(requests.map(({ id }) => id)).toEqual(['REQ-FIRST', 'REQ-LATER', 'REQ-ACCEPT'])
   })
 })
