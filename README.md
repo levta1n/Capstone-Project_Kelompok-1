@@ -1,65 +1,91 @@
-# capstone-project
+# Sistem Manajemen Peminjaman Ruangan
 
-This template should help get you started developing with Vue 3 in Vite.
+Aplikasi web untuk mengelola permintaan peminjaman ruangan, mulai dari pengajuan oleh pemohon hingga peninjauan oleh admin.
 
-## Recommended IDE Setup
+## Teknologi
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+- Vue 3 dan Vite
+- Supabase
+- Cypress untuk pengujian end-to-end
+- Vitest untuk pengujian unit
 
-## Recommended Browser Setup
+## Persiapan
 
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+Pastikan Node.js dan npm sudah terpasang, lalu jalankan:
 
 ```sh
 npm install
 ```
 
-### Compile and Hot-Reload for Development
+Siapkan konfigurasi Supabase di file `.env` pada root proyek. Jangan commit file `.env` atau membagikan nilai rahasianya.
+
+## Menjalankan aplikasi
+
+Jalankan server pengembangan dengan hot reload:
 
 ```sh
 npm run dev
 ```
 
-### Compile and Minify for Production
+## Pengujian
 
-```sh
-npm run build
-```
-
-### Run Unit Tests with [Vitest](https://vitest.dev/)
+### Pengujian unit
 
 ```sh
 npm run test:unit
 ```
 
-### Run End-to-End Tests with [Cypress](https://www.cypress.io/)
+### Pengujian end-to-end dengan Cypress
+
+Untuk membuka Cypress Test Runner:
 
 ```sh
 npm run test:e2e:dev
 ```
 
-This runs the end-to-end tests against the Vite development server.
-It is much faster than the production build.
-
-But it's still recommended to test the production build with `test:e2e` before deploying (e.g. in CI environments):
+Untuk menjalankan seluruh spec dalam mode headless:
 
 ```sh
-npm run build
 npm run test:e2e
 ```
 
-### Lint with [ESLint](https://eslint.org/)
+Pengujian end-to-end memakai akun dan konfigurasi Supabase dari `.env`. Beberapa spec membuat atau mengubah data, jadi jalankan pengujian menggunakan database khusus testing.
+
+#### Menjalankan pengujian di Chrome atau Firefox
+
+Chrome atau Firefox disarankan untuk menjalankan pengujian browser. Pastikan browser yang dipilih sudah terpasang.
+
+Jika server Vite sudah berjalan di `http://localhost:5173`, jalankan:
+
+```sh
+npx cypress run --e2e --browser chrome
+```
+
+Untuk Firefox:
+
+```sh
+npx cypress run --e2e --browser firefox
+```
+
+Untuk membuka Test Runner di browser tertentu, gunakan `open` sebagai pengganti `run`, misalnya:
+
+```sh
+npx cypress open --e2e --browser chrome
+```
+
+```sh
+npx cypress open --e2e --browser firefox
+```
+
+Detail daftar spec, kredensial pengujian, dan dampak data dapat dilihat di [panduan Cypress](./cypress/README.md).
+
+### Build produksi
+
+```sh
+npm run build
+```
+
+### Lint
 
 ```sh
 npm run lint

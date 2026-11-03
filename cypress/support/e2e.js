@@ -1,20 +1,24 @@
-// ***********************************************************
-// This example support/index.js is processed and
-// loaded automatically before your test files.
-//
-// This is a great place to put global configuration and
-// behavior that modifies Cypress.
-//
-// You can change the location of this file or turn off
-// automatically serving support files with the
-// 'supportFile' configuration option.
-//
-// You can read more here:
-// https://on.cypress.io/configuration
-// ***********************************************************
+function safePathSegment(value) {
+  return value
+    .normalize('NFKD')
+    .replace(/[^\w.-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || 'test'
+}
 
-// Import commands.js using ES2015 syntax:
-import './commands'
+afterEach(() => {
+  const specParts = Cypress.spec.relative.split(/[\\/]/)
+  const e2eIndex = specParts.lastIndexOf('e2e')
+  const firstSpecPart = specParts[e2eIndex + 1]
+  const functionality = e2eIndex < 0
+    ? 'lainnya'
+    : firstSpecPart?.includes('.')
+      ? firstSpecPart.replace(/\.(cy|spec)\.[^.]+$/, '')
+      : firstSpecPart || 'lainnya'
+  const specName = specParts.at(-1).replace(/\.[^.]+$/, '')
+  const testName = safePathSegment(Cypress.currentTest.titlePath.join('-'))
 
-// Alternatively you can use CommonJS syntax:
-// require('./commands')
+  cy.screenshot(`${functionality}/${specName}/${testName}`, {
+    capture: 'viewport',
+  })
+})
