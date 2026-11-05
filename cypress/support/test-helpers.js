@@ -136,7 +136,6 @@ export function createPendingRequest(purpose, daysAhead = scheduleOffsetForPurpo
   cy.contains('button', 'Kirim permintaan').click()
 
   let createdRequest
-  let updatedRequestCount
   return cy.get('@reservationList.all').should((calls) => {
     const matchingResponse = calls.find(({ response }) =>
       Array.isArray(response?.body)
@@ -144,15 +143,10 @@ export function createPendingRequest(purpose, daysAhead = scheduleOffsetForPurpo
     )?.response
     expect(matchingResponse, 'new request should be returned by the reservation list API').to.exist
     createdRequest = matchingResponse.body.find((row) => row.purpose === purpose)
-    updatedRequestCount = matchingResponse.body.length
-  }).then(() => {
-    return cy.get('#requests-list').should(($section) => {
-      expect($section.text()).to.include(`dari ${updatedRequestCount}`)
-    })
   }).then(() => {
     expect(createdRequest, 'created request record').to.exist
     expect(createdRequest.status).to.equal('pending')
-    return createdRequest
+    return requesterRequestRow(createdRequest.request_code).then(() => createdRequest)
   })
 }
 

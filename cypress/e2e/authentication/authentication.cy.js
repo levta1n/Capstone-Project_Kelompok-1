@@ -1,4 +1,4 @@
-import { loginAs } from '../support/test-helpers'
+import { loginAs } from '../../support/test-helpers'
 
 describe('Login dan navigasi role', () => {
   it('membuka halaman login dari root', () => {
