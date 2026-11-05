@@ -3,6 +3,7 @@ import LandingPage from '../views/LandingPage.vue'
 import DashboardPage from '../views/DashboardPage.vue'
 import RequesterDashboardPage from '../views/RequesterDashboardPage.vue'
 import PasswordUpdatePage from '../views/PasswordUpdatePage.vue'
+import NotFoundPage from '../views/NotFoundPage.vue'
 import { supabase } from '../utils/supabase'
 import { getProfile } from '../services/profileService'
 
@@ -34,6 +35,11 @@ export const routes = [
     path: '/reset-password',
     name: 'reset-password',
     component: PasswordUpdatePage,
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: NotFoundPage,
   },
 ]
 
